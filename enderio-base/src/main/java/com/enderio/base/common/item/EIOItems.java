@@ -448,6 +448,7 @@ public class EIOItems {
         .tab(new NonNullLazyValue<>(() -> EIOCreativeTabs.GEAR)).lang("Explosive II" + UPGRADE_TEXT)
         .register();
 
+    //TODO: Textures for dark_steel_upgrade_penetration_1 and dark_steel_upgrade_penetration_2 needed
     public static ItemEntry<DarkSteelUpgradeItem> DARK_STEEL_UPGRADE_EXPLOSIVE_PENETRATION_1 = REGISTRATE
         .item("dark_steel_upgrade_penetration_1", properties -> new DarkSteelUpgradeItem(properties, ExplosivePenetrationUpgradeTier.ONE.getActivationCost(),
             ExplosivePenetrationUpgradeTier.ONE.getFactory()))

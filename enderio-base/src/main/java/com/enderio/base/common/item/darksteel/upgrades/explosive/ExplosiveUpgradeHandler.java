@@ -86,14 +86,14 @@ public class ExplosiveUpgradeHandler {
     }
 
     private static boolean explodeBlock(ItemStack itemStack, Level level, BlockPos minePos, Player player, EmitParticlesPacket particles) {
-        if(!level.isInWorldBounds(minePos) || EnergyUtil.getEnergyStored(itemStack) <= 0) {
+        if (!level.isInWorldBounds(minePos) || EnergyUtil.getEnergyStored(itemStack) <= 0) {
             return false;
         }
         BlockState blockState = level.getBlockState(minePos);
-        if(!canExplode(itemStack, blockState, level.getBlockEntity(minePos))) {
+        if (!canExplode(itemStack, blockState, level.getBlockEntity(minePos))) {
             return false;
         }
-        if(BlockUtil.removeBlock(level, player, itemStack, minePos)) {
+        if (BlockUtil.removeBlock(level, player, itemStack, minePos)) {
             EnergyUtil.extractEnergy(itemStack, EXPLOSIVE_BREAK_POWER_USE.get(),false);
             if (RAND.nextFloat() < .3f) {
                 particles.add(minePos, ParticleTypes.LARGE_SMOKE);
@@ -106,10 +106,10 @@ public class ExplosiveUpgradeHandler {
     }
 
     private static boolean canExplode(ItemStack itemStack, BlockState blockState, @Nullable BlockEntity blockEntity) {
-        if(EIOTags.Blocks.DARK_STEEL_EXPLODABLE_WHITELIST.contains(blockState.getBlock())) {
+        if (EIOTags.Blocks.DARK_STEEL_EXPLODABLE_WHITELIST.contains(blockState.getBlock())) {
             return true;
         }
-        if( blockEntity != null) {
+        if (blockEntity != null) {
             return false;
         }
         boolean correctTool = Items.STONE_PICKAXE.isCorrectToolForDrops(blockState) ||
@@ -118,10 +118,24 @@ public class ExplosiveUpgradeHandler {
         return correctTool && !EIOTags.Blocks.DARK_STEEL_EXPLODABLE_BLACKLIST.contains(blockState.getBlock());
     }
 
+    public static float adjustDestroySpeed(float inputSpeed, ItemStack pStack) {
+        if (hasExplosiveUpgrades(pStack) && EnergyUtil.getEnergyStored(pStack) > 0) {
+            //ramp slowdown until half speed is reached with Explosive II and Penetration II
+            float maxReduction = 0.5f;
+            float areaAtMaxReduction = 5 * 5 * 3;
+            AABB bounds = calculateMiningArea(pStack, Direction.NORTH);
+            float miningArea = (float)(bounds.getXsize() * bounds.getYsize() * bounds.getZsize());
+            float adjustBy = (miningArea / areaAtMaxReduction) * maxReduction;
+            adjustBy = Math.min(adjustBy, maxReduction);
+            return inputSpeed - (inputSpeed * adjustBy);
+        }
+        return inputSpeed;
+    }
+
     private static AABB calculateMiningArea(ItemStack tool, Direction targetDir) {
         AABB miningBounds = new AABB(0,0,0,1,1,1);
 
-        double radius = DarkSteelUpgradeable
+        int radius = DarkSteelUpgradeable
             .getUpgradeAs(tool, ExplosiveUpgrade.NAME, ExplosiveUpgrade.class)
             .map(ExplosiveUpgrade::getMagnitude)
             .orElse(0);
@@ -135,7 +149,7 @@ public class ExplosiveUpgradeHandler {
             miningBounds = miningBounds.expandTowards(-mask.x, -mask.y, -mask.z);
         }
 
-        double penetration = DarkSteelUpgradeable
+        int penetration = DarkSteelUpgradeable
             .getUpgradeAs(tool, ExplosivePenetrationUpgrade.NAME, ExplosivePenetrationUpgrade.class)
             .map(ExplosivePenetrationUpgrade::getMagnitude)
             .orElse(0);
@@ -154,14 +168,14 @@ public class ExplosiveUpgradeHandler {
     @SubscribeEvent
     public static void showAreaOfEffectHighlight(DrawSelectionEvent.HighlightBlock event) {
         LocalPlayer player = Minecraft.getInstance().player;
-        if(player != null && !player.isCrouching() && hasExplosiveUpgrades(player.getItemInHand(InteractionHand.MAIN_HAND))) {
+        if (player != null && !player.isCrouching() && hasExplosiveUpgrades(player.getItemInHand(InteractionHand.MAIN_HAND))) {
             drawHighlight(event, player.getItemInHand(InteractionHand.MAIN_HAND));
         }
     }
 
     private static void drawHighlight(DrawSelectionEvent.HighlightBlock event, ItemStack held) {
         ClientLevel level = Minecraft.getInstance().level;
-        if(level == null) {
+        if (level == null) {
             return;
         }
         BlockPos blockPos = event.getTarget().getBlockPos();
@@ -192,7 +206,7 @@ public class ExplosiveUpgradeHandler {
     private static void renderJoiningLines(PoseStack poseStack, VertexConsumer vertexConsumer, AABB refBounds, AABB miningBounds, Vector3d origin, Vector4f color) {
         var fromCorners = getCorners(refBounds);
         var toCorners = getCorners(miningBounds);
-        for(int i=0;i<fromCorners.size();i++) {
+        for (int i=0;i<fromCorners.size();i++) {
             Vector3d from = fromCorners.get(i);
             Vector3d to = toCorners.get(i);
             addVertices(poseStack.last(), vertexConsumer, origin, from, to, color);

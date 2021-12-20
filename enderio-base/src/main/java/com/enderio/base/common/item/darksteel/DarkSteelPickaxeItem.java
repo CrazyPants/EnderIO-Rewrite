@@ -51,6 +51,7 @@ public class DarkSteelPickaxeItem extends PickaxeItem implements IDarkSteelItem 
     public float getDestroySpeed(ItemStack pStack, BlockState pState) {
         final float baseSpeed = canHarvest(pStack, pState) ? speed : 1.0f;
         float adjustedSpeed = getEmpoweredUpgrade(pStack).map(empoweredUpgrade -> empoweredUpgrade.adjustDestroySpeed(baseSpeed)).orElse(baseSpeed);
+        adjustedSpeed = ExplosiveUpgradeHandler.adjustDestroySpeed(adjustedSpeed, pStack);
         if (useObsidianMining(pState, pStack)) {
             adjustedSpeed += speedBoostWhenObsidian.get();
         }

@@ -72,7 +72,7 @@ public class DarkSteelConfig {
 
         builder.push("explosive");
 
-        EXPLOSIVE_ENERGY_PER_EXPLODED_BLOCK = builder.define("explosiveEnergyPerBlock", 20);
+        EXPLOSIVE_ENERGY_PER_EXPLODED_BLOCK = builder.define("explosiveEnergyPerBlock", 30);
 
         EXPLOSIVE_RADIUS_ACTIVATION_COST_I = builder.define("explosiveActivationCostI", 8);
         EXPLOSIVE_I = builder.define("explosiveI", 1);
