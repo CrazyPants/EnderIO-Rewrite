@@ -1,6 +1,13 @@
 package com.enderio.base.common.item.darksteel.upgrades.explosive;
 
 import com.enderio.base.common.capability.darksteel.DarkSteelUpgradeable;
+import com.enderio.base.common.item.darksteel.upgrades.SpoonUpgrade;
+import com.enderio.base.common.network.EIOPackets;
+import com.enderio.base.common.network.packet.EmitParticlesPacket;
+import com.enderio.base.common.tag.EIOTags;
+import com.enderio.base.common.util.BlockUtil;
+import com.enderio.base.config.base.BaseConfig;
+import com.enderio.core.common.util.EnergyUtil;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Vector3d;
@@ -12,26 +19,106 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.DrawSelectionEvent;
+import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.network.PacketDistributor;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ExplosiveUpgradeHandler {
 
-    public static AABB calculateMiningArea(ItemStack tool, Direction targetDir) {
+    private static final ForgeConfigSpec.ConfigValue<Integer> EXPLOSIVE_BREAK_POWER_USE = BaseConfig.COMMON.DARK_STEEL.EXPLOSIVE_ENERGY_PER_EXPLODED_BLOCK;
+
+    private static final Random RAND = new Random();
+
+    public static boolean hasExplosiveUpgrades(ItemStack stack) {
+        return DarkSteelUpgradeable.hasUpgrade(stack, ExplosiveUpgrade.NAME) || DarkSteelUpgradeable.hasUpgrade(stack, ExplosivePenetrationUpgrade.NAME);
+    }
+
+    public static void onMineBlock(ItemStack pStack, Level pLevel, BlockPos pPos, LivingEntity pEntityLiving) {
+        if (pEntityLiving instanceof Player player && !player.isCrouching() && hasExplosiveUpgrades(pStack) && EnergyUtil.getEnergyStored(pStack) > 0) {
+            BlockHitResult hit = Item.getPlayerPOVHitResult(pLevel, player, ClipContext.Fluid.NONE);
+            if (pPos.equals(hit.getBlockPos())) {
+                EmitParticlesPacket particles = new EmitParticlesPacket();
+                boolean didAnySploding = explodeArea(pStack, pLevel, player, hit, particles);
+                if (didAnySploding) {
+                    EIOPackets.getNetwork().getNetworkChannel().send(PacketDistributor.TRACKING_CHUNK.with(() -> pLevel.getChunkAt(pPos)), particles);
+                }
+            }
+        }
+    }
+
+    private static boolean explodeArea(ItemStack pStack, Level pLevel, Player player, BlockHitResult hit, EmitParticlesPacket particles) {
+        boolean didExplode = false;
+        AABB bb = calculateMiningArea(pStack, hit.getDirection());
+        bb = bb.move(hit.getBlockPos());
+        for (BlockPos minePos : BlockPos.betweenClosed((int) bb.minX, (int) bb.minY, (int) bb.minZ,
+            (int) bb.maxX - 1, (int) bb.maxY - 1, (int) bb.maxZ - 1)) {
+            if (!hit.getBlockPos().equals(minePos)) {
+                didExplode = explodeBlock(pStack, pLevel, minePos, player, particles) || didExplode;
+            }
+        }
+        return didExplode;
+    }
+
+    private static boolean explodeBlock(ItemStack itemStack, Level level, BlockPos minePos, Player player, EmitParticlesPacket particles) {
+        if(!level.isInWorldBounds(minePos) || EnergyUtil.getEnergyStored(itemStack) <= 0) {
+            return false;
+        }
+        BlockState blockState = level.getBlockState(minePos);
+        if(!canExplode(itemStack, blockState, level.getBlockEntity(minePos))) {
+            return false;
+        }
+        if(BlockUtil.removeBlock(level, player, itemStack, minePos)) {
+            EnergyUtil.extractEnergy(itemStack, EXPLOSIVE_BREAK_POWER_USE.get(),false);
+            if (RAND.nextFloat() < .3f) {
+                particles.add(minePos, ParticleTypes.LARGE_SMOKE);
+            } else if (RAND.nextFloat() < .5f) {
+                particles.add(minePos, ParticleTypes.SMOKE);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean canExplode(ItemStack itemStack, BlockState blockState, @Nullable BlockEntity blockEntity) {
+        if(EIOTags.Blocks.DARK_STEEL_EXPLODABLE_WHITELIST.contains(blockState.getBlock())) {
+            return true;
+        }
+        if( blockEntity != null) {
+            return false;
+        }
+        boolean correctTool = Items.STONE_PICKAXE.isCorrectToolForDrops(blockState) ||
+            (DarkSteelUpgradeable.hasUpgrade(itemStack, SpoonUpgrade.NAME) && Items.STONE_SHOVEL.isCorrectToolForDrops(blockState));
+
+        return correctTool && !EIOTags.Blocks.DARK_STEEL_EXPLODABLE_BLACKLIST.contains(blockState.getBlock());
+    }
+
+    private static AABB calculateMiningArea(ItemStack tool, Direction targetDir) {
         AABB miningBounds = new AABB(0,0,0,1,1,1);
 
         double radius = DarkSteelUpgradeable
@@ -61,9 +148,6 @@ public class ExplosiveUpgradeHandler {
         return miningBounds;
     }
 
-    public static boolean hasExplosiveUpgrades(ItemStack stack) {
-        return DarkSteelUpgradeable.hasUpgrade(stack, ExplosiveUpgrade.NAME) || DarkSteelUpgradeable.hasUpgrade(stack, ExplosivePenetrationUpgrade.NAME);
-    }
 
     // region area highlight
 

@@ -8,27 +8,20 @@ import com.enderio.base.common.item.darksteel.upgrades.explosive.ExplosivePenetr
 import com.enderio.base.common.item.darksteel.upgrades.explosive.ExplosiveUpgrade;
 import com.enderio.base.common.item.darksteel.upgrades.explosive.ExplosiveUpgradeHandler;
 import com.enderio.base.common.lang.EIOLang;
-import com.enderio.base.common.tag.EIOTags;
-import com.enderio.base.common.util.BlockUtil;
 import com.enderio.base.config.base.BaseConfig;
 import com.enderio.core.common.util.EnergyUtil;
 import com.enderio.core.common.util.TooltipUtil;
-import com.enderio.core.common.util.blockiterators.CubicBlockIterator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
 import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.common.TierSortingRegistry;
 import net.minecraftforge.common.ToolActions;
@@ -43,8 +36,6 @@ public class DarkSteelPickaxeItem extends PickaxeItem implements IDarkSteelItem 
     private final ForgeConfigSpec.ConfigValue<Integer> speedBoostWhenObsidian = BaseConfig.COMMON.DARK_STEEL.DARK_STEEL_PICKAXE_OBSIDIAN_SPEED;
 
     private final ForgeConfigSpec.ConfigValue<Integer> useObsidianBreakSpeedAtHardness = BaseConfig.COMMON.DARK_STEEL.DARK_STEEL_PICKAXE_AS_OBSIDIAN_AT_HARDNESS;
-
-    private final ForgeConfigSpec.ConfigValue<Integer> explosiveBreakPowerUse = BaseConfig.COMMON.DARK_STEEL.EXPLOSIVE_ENERGY_PER_EXPLODED_BLOCK;
 
     public DarkSteelPickaxeItem(Properties pProperties) {
         super(EIOItems.DARK_STEEL_TIER, 1, -2.8F, pProperties);
@@ -71,49 +62,8 @@ public class DarkSteelPickaxeItem extends PickaxeItem implements IDarkSteelItem 
         if (useObsidianMining(pState, pStack)) {
             EnergyUtil.extractEnergy(pStack, obsidianBreakPowerUse.get(), false);
         }
-
-        //TODO: Debug only as I can't charge items yet
-        //EnergyUtil.setFull(pStack);
-        //System.out.println("DarkSteelPickaxeItem.mineBlock canExpode = " + canExplode(pStack, pState) + " block=" + pState.getBlock());
-
-        if (pEntityLiving instanceof Player player && ExplosiveUpgradeHandler.hasExplosiveUpgrades(pStack) && !pEntityLiving.isCrouching()
-            && EnergyUtil.getEnergyStored(pStack) > 0) {
-            BlockHitResult hit = getPlayerPOVHitResult(pLevel, player, ClipContext.Fluid.NONE);
-            if(pPos.equals(hit.getBlockPos())) {
-                AABB miningArea = ExplosiveUpgradeHandler.calculateMiningArea(pStack, hit.getDirection());
-                miningArea = miningArea.move(pPos);
-                CubicBlockIterator it = new CubicBlockIterator(miningArea);
-                while (it.hasNext()) {
-                    BlockPos minePos = it.next();
-                    if(!pPos.equals(minePos)) {
-                      explodeBlock(pStack, pLevel, minePos, player);
-                    }
-                }
-            }
-        }
+        ExplosiveUpgradeHandler.onMineBlock(pStack, pLevel, pPos, pEntityLiving);
         return super.mineBlock(pStack, pLevel, pState, pPos, pEntityLiving);
-    }
-
-    private void explodeBlock(ItemStack itemStack, Level level, BlockPos minePos, Player player) {
-        if(!level.isInWorldBounds(minePos) || EnergyUtil.getEnergyStored(itemStack) <= 0) {
-            return;
-        }
-        BlockState blockState = level.getBlockState(minePos);
-        if(!canExplode(itemStack, blockState)) {
-            return;
-        }
-        if(BlockUtil.removeBlock(level, player, itemStack, minePos)) {
-            EnergyUtil.extractEnergy(itemStack,explosiveBreakPowerUse.get(),false);
-            //TODO: particle effect
-        }
-    }
-
-    private boolean canExplode(ItemStack itemStack, BlockState blockState) {
-        if(!isCorrectToolForDrops(itemStack, blockState)) {
-            return false;
-        }
-        return EIOTags.Blocks.DARK_STEEL_EXPLODABLE_STONE.contains(blockState.getBlock()) ||
-            (DarkSteelUpgradeable.hasUpgrade(itemStack, SpoonUpgrade.NAME) && EIOTags.Blocks.DARK_STEEL_EXPLODABLE_DIRT.contains(blockState.getBlock()));
     }
 
     @Override
